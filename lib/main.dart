@@ -49,9 +49,7 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: const Color(0xFF075E54),
         title: Text(
           titles[selectedIndex],
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -60,11 +58,9 @@ class _HomePageState extends State<HomePage> {
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'Profil') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Menu Profil')),
-                );
-              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Menu $value belum aktif')),
+              );
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
@@ -144,20 +140,31 @@ class ChatPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      children: const [
+      children: [
         ChatTile(
           name: 'Ngechat',
           message: 'Selamat datang di Ngechat!',
           icon: Icons.account_circle,
           time: '10.00',
+          onTap: () => openChat(context, 'Ngechat'),
         ),
         ChatTile(
           name: 'Contoh Kontak',
           message: 'Mulai percakapan baru',
           icon: Icons.person,
           time: '09.30',
+          onTap: () => openChat(context, 'Contoh Kontak'),
         ),
       ],
+    );
+  }
+
+  void openChat(BuildContext context, String name) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatRoomPage(name: name),
+      ),
     );
   }
 }
@@ -167,6 +174,7 @@ class ChatTile extends StatelessWidget {
   final String message;
   final String time;
   final IconData icon;
+  final VoidCallback onTap;
 
   const ChatTile({
     super.key,
@@ -174,6 +182,7 @@ class ChatTile extends StatelessWidget {
     required this.message,
     required this.time,
     required this.icon,
+    required this.onTap,
   });
 
   @override
@@ -193,7 +202,149 @@ class ChatTile extends StatelessWidget {
         time,
         style: const TextStyle(fontSize: 12),
       ),
-      onTap: () {},
+      onTap: onTap,
+    );
+  }
+}
+
+class ChatRoomPage extends StatefulWidget {
+  final String name;
+
+  const ChatRoomPage({super.key, required this.name});
+
+  @override
+  State<ChatRoomPage> createState() => _ChatRoomPageState();
+}
+
+class _ChatRoomPageState extends State<ChatRoomPage> {
+  final TextEditingController controller = TextEditingController();
+  final List<String> messages = [];
+
+  void sendMessage() {
+    final text = controller.text.trim();
+
+    if (text.isEmpty) return;
+
+    setState(() {
+      messages.add(text);
+      controller.clear();
+    });
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF075E54),
+        title: Row(
+          children: [
+            const CircleAvatar(
+              backgroundColor: Color(0xFF128C7E),
+              child: Icon(Icons.person, color: Colors.white),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                widget.name,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.call),
+          ),
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.more_vert),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: messages.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Mulai percakapan di Ngechat',
+                      style: TextStyle(color: Colors.white60),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      return Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          constraints: BoxConstraints(
+                            maxWidth:
+                                MediaQuery.of(context).size.width * 0.78,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF075E54),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(
+                            messages[index],
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      textCapitalization: TextCapitalization.sentences,
+                      minLines: 1,
+                      maxLines: 4,
+                      onSubmitted: (_) => sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: 'Ketik pesan...',
+                        filled: true,
+                        fillColor: const Color(0xFF1D2A32),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(25),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: const Color(0xFF128C7E),
+                    child: IconButton(
+                      onPressed: sendMessage,
+                      icon: const Icon(Icons.send, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -278,12 +429,21 @@ class AddContactPage extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          const ListTile(
-            leading: CircleAvatar(
+          ListTile(
+            leading: const CircleAvatar(
               child: Icon(Icons.person),
             ),
-            title: Text('Contoh Kontak'),
-            subtitle: Text('Belum terhubung'),
+            title: const Text('Contoh Kontak'),
+            subtitle: const Text('Belum terhubung'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      const ChatRoomPage(name: 'Contoh Kontak'),
+                ),
+              );
+            },
           ),
         ],
       ),
