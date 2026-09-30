@@ -28,6 +28,11 @@ jobs:
           flutter --version
           dart --version
 
+      # ---> BAGIAN INI DITAMBAHKAN <---
+      - name: Generate Missing Android Files
+        run: flutter create . --platforms=android
+      # --------------------------------
+
       - name: Check Firebase configuration
         run: |
           test -f google-services.json || {
