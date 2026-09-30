@@ -176,9 +176,13 @@ class _AuthPageState extends State<AuthPage> {
                           setState(() => _error = 'Isi email terlebih dahulu untuk reset kata sandi.');
                           return;
                         }
+                        // PERBAIKAN: Simpan messenger sebelum await
+                        final messenger = ScaffoldMessenger.of(context);
                         try {
                           await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email reset kata sandi sudah dikirim.')));
+                          if (mounted) {
+                            messenger.showSnackBar(const SnackBar(content: Text('Email reset kata sandi sudah dikirim.')));
+                          }
                         } on FirebaseAuthException catch (e) {
                           setState(() => _error = _authMessage(e.code));
                         }
@@ -291,6 +295,10 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _send() async {
     final value = _text.text.trim();
     if (value.isEmpty || _sending) return;
+    
+    // PERBAIKAN: Simpan messenger sebelum await
+    final messenger = ScaffoldMessenger.of(context);
+    
     setState(() => _sending = true);
     _text.clear();
     try {
@@ -309,7 +317,8 @@ class _ChatPageState extends State<ChatPage> {
       });
     } catch (e) {
       _text.text = value;
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pesan gagal dikirim. Periksa koneksi dan Firestore Rules.')));
+      // PERBAIKAN: Gunakan messenger yang sudah disimpan
+      messenger.showSnackBar(const SnackBar(content: Text('Pesan gagal dikirim. Periksa koneksi dan Firestore Rules.')));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
