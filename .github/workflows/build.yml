@@ -42,46 +42,23 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          settings_kts = Path("android/settings.gradle.kts")
-          app_kts = Path("android/app/build.gradle.kts")
+          settings = Path("android/settings.gradle")
+          app = Path("android/app/build.gradle")
 
-          settings_groovy = Path("android/settings.gradle")
-          app_groovy = Path("android/app/build.gradle")
-
-          if settings_kts.exists() and app_kts.exists():
-              settings = settings_kts
-              app = app_kts
-              is_kts = True
-          elif settings_groovy.exists() and app_groovy.exists():
-              settings = settings_groovy
-              app = app_groovy
-              is_kts = False
-          else:
-              raise SystemExit(
-                  "File Gradle Android tidak ditemukan."
-              )
+          if not settings.exists() or not app.exists():
+              raise SystemExit("File Gradle Android tidak lengkap di folder android/.")
 
           settings_text = settings.read_text()
           app_text = app.read_text()
 
-          if is_kts:
-              settings_plugin = (
-                  '    id("com.google.gms.google-services") '
-                  'version "4.4.2" apply false\n'
-              )
+          settings_plugin = (
+              '    id "com.google.gms.google-services" '
+              'version "4.4.2" apply false\n'
+          )
 
-              app_plugin = (
-                  '    id("com.google.gms.google-services")\n'
-              )
-          else:
-              settings_plugin = (
-                  '    id "com.google.gms.google-services" '
-                  'version "4.4.2" apply false\n'
-              )
-
-              app_plugin = (
-                  '    id "com.google.gms.google-services"\n'
-              )
+          app_plugin = (
+              '    id "com.google.gms.google-services"\n'
+          )
 
           if "com.google.gms.google-services" not in settings_text:
               settings_text = settings_text.replace(
