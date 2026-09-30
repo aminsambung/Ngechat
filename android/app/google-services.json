@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "191784295408",
+    "project_id": "ngechat-a278c",
+    "storage_bucket": "ngechat-a278c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:191784295408:android:01752f0e30f518eb73db35",
+        "android_client_info": {
+          "package_name": "com.example.ngechat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDPqnrv_Ud_rBEwqfAGKjRzdJj_E02FSB0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
