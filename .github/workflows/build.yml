@@ -28,13 +28,6 @@ jobs:
           flutter --version
           dart --version
 
-      - name: Create Android project
-        run: |
-          flutter create \
-            --platforms=android \
-            --project-name=ngechat \
-            .
-
       - name: Check Firebase configuration
         run: |
           test -f google-services.json || {
