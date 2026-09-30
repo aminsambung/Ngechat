@@ -198,14 +198,14 @@ class _HomePageState extends State<HomePage> {
           for (final x in ['Indonesia', 'English']) SimpleDialogOption(onPressed: () => Navigator.pop(d, x), child: Text(x))
         ]));
         if (l != null) setState(() => language = l);
-        refresh();
+        refresh(() {});
       }),
-      SwitchListTile(title: const Text('Notifikasi'), value: notifications, onChanged: (v) { setState(() => notifications = v); refresh(); }),
+      SwitchListTile(title: const Text('Notifikasi'), value: notifications, onChanged: (v) { setState(() => notifications = v); refresh(() {}); }),
       const Divider(), const Text('Privasi', style: TextStyle(fontWeight: FontWeight.bold)),
-      SwitchListTile(title: const Text('Tampilkan profil'), value: profileVisible, onChanged: (v) { setState(() => profileVisible = v); refresh(); }),
-      SwitchListTile(title: const Text('Laporan dibaca'), value: receipts, onChanged: (v) { setState(() => receipts = v); refresh(); }),
+      SwitchListTile(title: const Text('Tampilkan profil'), value: profileVisible, onChanged: (v) { setState(() => profileVisible = v); refresh(() {}); }),
+      SwitchListTile(title: const Text('Laporan dibaca'), value: receipts, onChanged: (v) { setState(() => receipts = v); refresh(() {}); }),
       const Divider(), const Text('Keamanan', style: TextStyle(fontWeight: FontWeight.bold)),
-      SwitchListTile(title: const Text('Kunci aplikasi (demo)'), value: appLock, onChanged: (v) { setState(() => appLock = v); refresh(); }),
+      SwitchListTile(title: const Text('Kunci aplikasi (demo)'), value: appLock, onChanged: (v) { setState(() => appLock = v); refresh(() {}); }),
       const Text('Data dan pengaturan saat ini hanya tersimpan selama aplikasi berjalan.', style: TextStyle(color: Colors.grey)),
     ])),
   )));
