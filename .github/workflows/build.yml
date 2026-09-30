@@ -28,10 +28,9 @@ jobs:
           flutter --version
           dart --version
 
-      # ---> BAGIAN INI DITAMBAHKAN <---
+      # Langkah ini memastikan folder android dibuat ulang dari nol oleh server GitHub
       - name: Generate Missing Android Files
         run: flutter create . --platforms=android
-      # --------------------------------
 
       - name: Check Firebase configuration
         run: |
@@ -47,23 +46,28 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          settings = Path("android/settings.gradle")
-          app = Path("android/app/build.gradle")
+          settings_path = Path("android/settings.gradle")
+          if not settings_path.exists():
+              settings_path = Path("android/settings.gradle.kts")
 
-          if not settings.exists() or not app.exists():
+          app_path = Path("android/app/build.gradle")
+          if not app_path.exists():
+              app_path = Path("android/app/build.gradle.kts")
+
+          if not settings_path.exists() or not app_path.exists():
               raise SystemExit("File Gradle Android tidak lengkap di folder android/.")
 
-          settings_text = settings.read_text()
-          app_text = app.read_text()
+          settings_text = settings_path.read_text()
+          app_text = app_path.read_text()
 
-          settings_plugin = (
-              '    id "com.google.gms.google-services" '
-              'version "4.4.2" apply false\n'
-          )
+          is_kotlin = settings_path.suffix == ".kts"
 
-          app_plugin = (
-              '    id "com.google.gms.google-services"\n'
-          )
+          if is_kotlin:
+              settings_plugin = '    id("com.google.gms.google-services") version "4.4.2" apply false\n'
+              app_plugin = '    id("com.google.gms.google-services")\n'
+          else:
+              settings_plugin = '    id "com.google.gms.google-services" version "4.4.2" apply false\n'
+              app_plugin = '    id "com.google.gms.google-services"\n'
 
           if "com.google.gms.google-services" not in settings_text:
               settings_text = settings_text.replace(
@@ -79,8 +83,8 @@ jobs:
                   1,
               )
 
-          settings.write_text(settings_text)
-          app.write_text(app_text)
+          settings_path.write_text(settings_text)
+          app_path.write_text(app_text)
 
           print("Firebase Gradle plugin berhasil dipasang.")
           PY
