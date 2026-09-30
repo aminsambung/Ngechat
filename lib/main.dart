@@ -21,7 +21,7 @@ class NgechatApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00A884),
+          seedColor: Colors.blue,
         ),
         useMaterial3: true,
       ),
@@ -29,10 +29,6 @@ class NgechatApp extends StatelessWidget {
     );
   }
 }
-
-// ============================================================
-// AUTH GATE
-// ============================================================
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -50,11 +46,11 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        if (snapshot.data == null) {
-          return const AuthPage();
+        if (snapshot.hasData) {
+          return const PeoplePage();
         }
 
-        return const PeoplePage();
+        return const AuthPage();
       },
     );
   }
@@ -72,126 +68,122 @@ class AuthPage extends StatefulWidget {
 }
 
 class _AuthPageState extends State<AuthPage> {
-  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _nameController = TextEditingController();
 
-  final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-
-  bool _register = false;
-  bool _busy = false;
-  String? _error;
+  bool _isLogin = true;
+  bool _loading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _password.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final name = _nameController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _showMessage('Email dan password wajib diisi.');
+      return;
+    }
+
+    if (!_isLogin && name.isEmpty) {
+      _showMessage('Nama wajib diisi.');
+      return;
+    }
+
+    if (password.length < 6) {
+      _showMessage('Password minimal 6 karakter.');
       return;
     }
 
     setState(() {
-      _busy = true;
-      _error = null;
+      _loading = true;
     });
 
     try {
-      final auth = FirebaseAuth.instance;
-
-      if (_register) {
+      if (_isLogin) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } else {
         final credential =
-            await auth.createUserWithEmailAndPassword(
-          email: _email.text.trim(),
-          password: _password.text,
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
         );
 
         final user = credential.user;
 
-        if (user == null) {
-          throw Exception('User tidak berhasil dibuat.');
+        if (user != null) {
+          await user.updateDisplayName(name);
+
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+            'uid': user.uid,
+            'name': name,
+            'email': email,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
         }
-
-        await user.updateDisplayName(
-          _name.text.trim(),
-        );
-
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set({
-          'uid': user.uid,
-          'name': _name.text.trim(),
-          'email': _email.text.trim().toLowerCase(),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await auth.signInWithEmailAndPassword(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = _authMessage(e.code);
-        });
-      }
+      _showMessage(_authMessage(e));
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error =
-              'Terjadi kesalahan. Periksa koneksi dan konfigurasi Firebase.';
-        });
-      }
+      _showMessage('Terjadi kesalahan: $e');
     } finally {
       if (mounted) {
         setState(() {
-          _busy = false;
+          _loading = false;
         });
       }
     }
   }
 
-  String _authMessage(String code) {
-    switch (code) {
-      case 'email-already-in-use':
-        return 'Email sudah digunakan.';
-
+  String _authMessage(FirebaseAuthException e) {
+    switch (e.code) {
       case 'invalid-email':
         return 'Format email tidak valid.';
 
-      case 'weak-password':
-        return 'Kata sandi minimal 6 karakter.';
-
       case 'user-not-found':
+        return 'Akun tidak ditemukan.';
+
       case 'wrong-password':
       case 'invalid-credential':
-        return 'Email atau kata sandi salah.';
+        return 'Email atau password salah.';
+
+      case 'email-already-in-use':
+        return 'Email sudah digunakan.';
+
+      case 'weak-password':
+        return 'Password terlalu lemah.';
 
       case 'network-request-failed':
-        return 'Tidak ada koneksi internet.';
+        return 'Periksa koneksi internet.';
 
       case 'too-many-requests':
         return 'Terlalu banyak percobaan. Coba lagi nanti.';
 
       default:
-        return 'Login/daftar gagal ($code).';
+        return e.message ?? 'Terjadi kesalahan autentikasi.';
     }
   }
 
   Future<void> _resetPassword() async {
-    final email = _email.text.trim();
+    final email = _emailController.text.trim();
 
-    if (!email.contains('@')) {
-      setState(() {
-        _error =
-            'Isi email terlebih dahulu untuk reset kata sandi.';
-      });
+    if (email.isEmpty) {
+      _showMessage('Masukkan email terlebih dahulu.');
       return;
     }
 
@@ -200,189 +192,166 @@ class _AuthPageState extends State<AuthPage> {
         email: email,
       );
 
-      if (!mounted) {
-        return;
-      }
+      _showMessage('Email reset password sudah dikirim.');
+    } on FirebaseAuthException catch (e) {
+      _showMessage(_authMessage(e));
+    } catch (e) {
+      _showMessage('Terjadi kesalahan: $e');
+    }
+  }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Email reset kata sandi sudah dikirim.',
-          ),
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
         ),
       );
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = _authMessage(e.code);
-        });
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 420,
-            ),
-            child: Form(
-              key: _formKey,
+      appBar: AppBar(
+        title: const Text('Ngechat'),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 450,
+              ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const CircleAvatar(
-                    radius: 38,
-                    child: Icon(
-                      Icons.chat,
-                      size: 38,
-                    ),
+                  const Icon(
+                    Icons.chat_bubble_rounded,
+                    size: 80,
                   ),
 
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
 
-                  const Text(
-                    'Ngechat',
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Text(
+                    _isLogin ? 'Selamat datang' : 'Buat akun',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium,
                   ),
 
                   const SizedBox(height: 8),
 
                   Text(
-                    _register
-                        ? 'Buat akun baru'
-                        : 'Masuk ke akun kamu',
+                    _isLogin
+                        ? 'Masuk ke akun Ngechat kamu'
+                        : 'Daftar untuk mulai menggunakan Ngechat',
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  if (!_isLogin) ...[
+                    TextField(
+                      controller: _nameController,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama',
+                        prefixIcon: Icon(Icons.person),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      if (!_loading) {
+                        _submit();
+                      }
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                      ),
+                    ),
                   ),
 
                   const SizedBox(height: 24),
 
-                  if (_register)
-                    TextFormField(
-                      controller: _name,
-                      decoration: const InputDecoration(
-                        labelText: 'Nama',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person),
-                      ),
-                      validator: (value) {
-                        if (value == null ||
-                            value.trim().isEmpty) {
-                          return 'Nama wajib diisi';
-                        }
-
-                        return null;
-                      },
-                    ),
-
-                  if (_register)
-                    const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _email,
-                    keyboardType:
-                        TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email),
-                    ),
-                    validator: (value) {
-                      if (value == null ||
-                          !value.contains('@')) {
-                        return 'Masukkan email yang valid';
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _password,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Kata sandi',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.lock),
-                    ),
-                    validator: (value) {
-                      if (value == null ||
-                          value.length < 6) {
-                        return 'Minimal 6 karakter';
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-
-                    Text(
-                      _error!,
-                      style: const TextStyle(
-                        color: Colors.red,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-
-                  const SizedBox(height: 18),
-
                   SizedBox(
-                    width: double.infinity,
+                    height: 50,
                     child: FilledButton(
-                      onPressed:
-                          _busy ? null : _submit,
-                      child: _busy
+                      onPressed: _loading ? null : _submit,
+                      child: _loading
                           ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child:
-                                  CircularProgressIndicator(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
                                 strokeWidth: 2,
                               ),
                             )
                           : Text(
-                              _register
-                                  ? 'Daftar'
-                                  : 'Masuk',
+                              _isLogin ? 'Masuk' : 'Daftar',
                             ),
                     ),
                   ),
 
+                  if (_isLogin) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _loading ? null : _resetPassword,
+                      child: const Text('Lupa password?'),
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
                   TextButton(
-                    onPressed: _busy
+                    onPressed: _loading
                         ? null
                         : () {
                             setState(() {
-                              _register = !_register;
-                              _error = null;
+                              _isLogin = !_isLogin;
                             });
                           },
                     child: Text(
-                      _register
-                          ? 'Sudah punya akun? Masuk'
-                          : 'Belum punya akun? Daftar',
+                      _isLogin
+                          ? 'Belum punya akun? Daftar'
+                          : 'Sudah punya akun? Masuk',
                     ),
                   ),
-
-                  if (!_register)
-                    TextButton(
-                      onPressed:
-                          _busy ? null : _resetPassword,
-                      child: const Text(
-                        'Lupa kata sandi?',
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -402,154 +371,104 @@ class PeoplePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final me = FirebaseAuth.instance.currentUser!;
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      return const AuthPage();
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Ngechat',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        title: const Text('Ngechat'),
         actions: [
           IconButton(
             tooltip: 'Keluar',
-            icon: const Icon(Icons.logout),
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
             },
+            icon: const Icon(Icons.logout),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          ListTile(
-            leading: const CircleAvatar(
-              child: Icon(Icons.person),
-            ),
-            title: Text(
-              me.displayName?.isNotEmpty == true
-                  ? me.displayName!
-                  : 'Akun saya',
-            ),
-            subtitle: Text(
-              me.email ?? '',
-            ),
-            trailing: const Icon(
-              Icons.verified_user_outlined,
-            ),
-          ),
-
-          const Divider(height: 1),
-
-          const Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              14,
-              16,
-              6,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Pengguna Ngechat',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .orderBy('name')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Gagal memuat pengguna.\n\n${snapshot.error}',
+                  textAlign: TextAlign.center,
                 ),
               ),
-            ),
-          ),
+            );
+          }
 
-          Expanded(
-            child: StreamBuilder<
-                QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .orderBy('name')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return const Center(
-                    child: Text(
-                      'Gagal memuat pengguna. '
-                      'Periksa Firestore Rules.',
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          final users = snapshot.data?.docs.where((doc) {
+                return doc.id != currentUser.uid;
+              }).toList() ??
+              [];
+
+          if (users.isEmpty) {
+            return const Center(
+              child: Text(
+                'Belum ada pengguna lain.',
+              ),
+            );
+          }
+
+          return ListView.separated(
+            itemCount: users.length,
+            separatorBuilder: (_, __) => const Divider(
+              height: 1,
+            ),
+            itemBuilder: (context, index) {
+              final data = users[index].data();
+
+              final name =
+                  (data['name'] ?? 'Tanpa nama').toString();
+
+              final email =
+                  (data['email'] ?? '').toString();
+
+              return ListTile(
+                leading: CircleAvatar(
+                  child: Text(
+                    name.isNotEmpty
+                        ? name[0].toUpperCase()
+                        : '?',
+                  ),
+                ),
+                title: Text(name),
+                subtitle: Text(email),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatPage(
+                        otherUserId: users[index].id,
+                        otherUserName: name,
+                      ),
                     ),
                   );
-                }
-
-                if (!snapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
-                }
-
-                final people = snapshot.data!.docs
-                    .where(
-                      (doc) => doc.id != me.uid,
-                    )
-                    .toList();
-
-                if (people.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'Belum ada pengguna lain. '
-                        'Daftarkan akun kedua untuk '
-                        'mencoba chat.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  itemCount: people.length,
-                  itemBuilder: (context, index) {
-                    final data =
-                        people[index].data();
-
-                    final name =
-                        (data['name'] as String?) ??
-                            'Pengguna';
-
-                    final email =
-                        (data['email'] as String?) ??
-                            '';
-
-                    return ListTile(
-                      leading: CircleAvatar(
-                        child: Text(
-                          name.isEmpty
-                              ? '?'
-                              : name[0].toUpperCase(),
-                        ),
-                      ),
-                      title: Text(name),
-                      subtitle: Text(email),
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                      ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChatPage(
-                              peerUid:
-                                  people[index].id,
-                              peerName: name,
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+                },
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -560,13 +479,13 @@ class PeoplePage extends StatelessWidget {
 // ============================================================
 
 class ChatPage extends StatefulWidget {
-  final String peerUid;
-  final String peerName;
+  final String otherUserId;
+  final String otherUserName;
 
   const ChatPage({
     super.key,
-    required this.peerUid,
-    required this.peerName,
+    required this.otherUserId,
+    required this.otherUserName,
   });
 
   @override
@@ -574,267 +493,176 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final _text = TextEditingController();
-
-  bool _sending = false;
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
 
   late final String _chatId;
-  late final String _myUid;
+
+  User? get _currentUser => FirebaseAuth.instance.currentUser;
 
   @override
   void initState() {
     super.initState();
 
-    final user =
-        FirebaseAuth.instance.currentUser;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-    if (user == null) {
-      throw Exception(
-        'User belum login.',
-      );
+    if (currentUser == null) {
+      _chatId = '';
+      return;
     }
 
-    _myUid = user.uid;
-
     final ids = [
-      _myUid,
-      widget.peerUid,
+      currentUser.uid,
+      widget.otherUserId,
     ]..sort();
 
-    _chatId = ids.join('__');
+    _chatId = ids.join('_');
   }
 
   @override
   void dispose() {
-    _text.dispose();
+    _messageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
-    final value = _text.text.trim();
+  Future<void> _sendMessage() async {
+    final user = _currentUser;
+    final text = _messageController.text.trim();
 
-    if (value.isEmpty || _sending) {
+    if (user == null || text.isEmpty || _chatId.isEmpty) {
       return;
     }
 
-    setState(() {
-      _sending = true;
-    });
-
-    _text.clear();
+    _messageController.clear();
 
     try {
-      final db = FirebaseFirestore.instance;
+      final chatRef = FirebaseFirestore.instance
+          .collection('chats')
+          .doc(_chatId);
 
-      final chat =
-          db.collection('chats').doc(_chatId);
-
-      final memberIds = [
-        _myUid,
-        widget.peerUid,
-      ]..sort();
-
-      await chat.set(
+      await chatRef.set(
         {
-          'memberIds': memberIds,
-          'lastMessage': value,
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'participants': [
+            user.uid,
+            widget.otherUserId,
+          ],
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
 
-      await chat
-          .collection('messages')
-          .add({
-        'senderId': _myUid,
-        'text': value,
-        'createdAt':
-            FieldValue.serverTimestamp(),
+      await chatRef.collection('messages').add({
+        'senderId': user.uid,
+        'receiverId': widget.otherUserId,
+        'text': text,
+        'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      _text.text = value;
+      if (!mounted) return;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Pesan gagal dikirim. '
-              'Periksa koneksi dan Firestore Rules.',
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _sending = false;
-        });
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengirim pesan: $e'),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final chat =
-        FirebaseFirestore.instance
-            .collection('chats')
-            .doc(_chatId);
+    final user = _currentUser;
+
+    if (user == null) {
+      return const AuthPage();
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.peerName),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.call_outlined,
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Panggilan belum tersedia.',
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
+        title: Text(widget.otherUserName),
       ),
-
       body: Column(
         children: [
           Expanded(
             child: StreamBuilder<
                 QuerySnapshot<Map<String, dynamic>>>(
-              stream: chat
+              stream: FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(_chatId)
                   .collection('messages')
                   .orderBy('createdAt')
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  return const Center(
+                  return Center(
                     child: Text(
-                      'Tidak dapat membaca pesan. '
-                      'Periksa Firestore Rules.',
+                      'Gagal memuat pesan.\n${snapshot.error}',
                       textAlign: TextAlign.center,
                     ),
                   );
                 }
 
-                if (!snapshot.hasData) {
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
                   return const Center(
-                    child:
-                        CircularProgressIndicator(),
+                    child: CircularProgressIndicator(),
                   );
                 }
 
-                final docs =
-                    snapshot.data!.docs;
+                final messages = snapshot.data?.docs ?? [];
 
-                if (docs.isEmpty) {
+                if (messages.isEmpty) {
                   return const Center(
                     child: Text(
-                      'Mulai percakapan 👋',
+                      'Belum ada pesan.\nMulai percakapan sekarang.',
+                      textAlign: TextAlign.center,
                     ),
                   );
                 }
 
                 return ListView.builder(
-                  padding:
-                      const EdgeInsets.all(12),
-                  itemCount: docs.length,
-                  itemBuilder:
-                      (context, index) {
-                    final message =
-                        docs[index].data();
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(12),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final data = messages[index].data();
 
-                    final mine =
-                        message['senderId'] ==
-                            _myUid;
+                    final senderId =
+                        (data['senderId'] ?? '').toString();
 
-                    final stamp =
-                        message['createdAt'];
+                    final text =
+                        (data['text'] ?? '').toString();
 
-                    final time = stamp is Timestamp
-                        ? stamp.toDate()
-                        : null;
-
-                    final messageText =
-                        (message['text']
-                                as String?) ??
-                            '';
+                    final isMe = senderId == user.uid;
 
                     return Align(
-                      alignment: mine
+                      alignment: isMe
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
-                        constraints:
-                            BoxConstraints(
+                        constraints: BoxConstraints(
                           maxWidth:
-                              MediaQuery.of(
-                                        context,
-                                      ).size.width *
-                                  .78,
+                              MediaQuery.of(context).size.width *
+                                  0.75,
                         ),
                         margin:
-                            const EdgeInsets
-                                .symmetric(
-                          vertical: 4,
+                            const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
                         ),
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
-                          horizontal: 12,
-                          vertical: 9,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color: mine
-                              ? const Color(
-                                  0xFFDCF8C6,
-                                )
+                        decoration: BoxDecoration(
+                          color: isMe
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
                               : Theme.of(context)
                                   .colorScheme
                                   .surfaceContainerHighest,
                           borderRadius:
-                              BorderRadius.circular(
-                            14,
-                          ),
+                              BorderRadius.circular(16),
                         ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.end,
-                          children: [
-                            Align(
-                              alignment:
-                                  Alignment.centerLeft,
-                              child: Text(
-                                messageText,
-                                style: TextStyle(
-                                  color: mine
-                                      ? Colors.black87
-                                      : null,
-                                ),
-                              ),
-                            ),
-
-                            if (time != null)
-                              Text(
-                                '${time.hour.toString().padLeft(2, '0')}:'
-                                '${time.minute.toString().padLeft(2, '0')}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: mine
-                                      ? Colors.black54
-                                      : null,
-                                ),
-                              ),
-                          ],
-                        ),
+                        child: Text(text),
                       ),
                     );
                   },
@@ -844,57 +672,33 @@ class _ChatPageState extends State<ChatPage> {
           ),
 
           SafeArea(
+            top: false,
             child: Padding(
-              padding:
-                  const EdgeInsets.all(8),
+              padding: const EdgeInsets.fromLTRB(
+                12,
+                8,
+                12,
+                12,
+              ),
               child: Row(
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _text,
-                      minLines: 1,
-                      maxLines: 4,
-                      textCapitalization:
-                          TextCapitalization.sentences,
-                      decoration:
-                          InputDecoration(
-                        hintText:
-                            'Tulis pesan',
-                        filled: true,
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(
-                            24,
-                          ),
-                          borderSide:
-                              BorderSide.none,
-                        ),
-                        contentPadding:
-                            const EdgeInsets
-                                .symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
+                      controller: _messageController,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) {
+                        _sendMessage();
+                      },
+                      decoration: const InputDecoration(
+                        hintText: 'Tulis pesan...',
+                        border: OutlineInputBorder(),
                       ),
-                      onSubmitted: (_) =>
-                          _send(),
                     ),
                   ),
-
                   const SizedBox(width: 8),
-
-                  CircleAvatar(
-                    backgroundColor:
-                        const Color(0xFF00A884),
-                    child: IconButton(
-                      onPressed:
-                          _sending ? null : _send,
-                      icon: const Icon(
-                        Icons.send,
-                        color: Colors.white,
-                      ),
-                    ),
+                  IconButton.filled(
+                    onPressed: _sendMessage,
+                    icon: const Icon(Icons.send),
                   ),
                 ],
               ),
